@@ -1,0 +1,188 @@
+{
+  "info": {
+    "name": "Werwölfeln Backend API",
+    "description": "Complete API collection for testing the Werewolf game backend",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"player1\",\n  \"email\": \"player1@test.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {"raw": "http://localhost:8080/api/auth/register"}
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usernameOrEmail\": \"player1\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {"raw": "http://localhost:8080/api/auth/login"}
+          }
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:8080/api/auth/me"}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Lobby",
+      "item": [
+        {
+          "name": "Create Lobby",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"},
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"maxPlayers\": 8,\n  \"settingsJson\": \"{}\"\n}"
+            },
+            "url": {"raw": "http://localhost:8080/api/lobbies"}
+          }
+        },
+        {
+          "name": "Get Lobby State",
+          "request": {
+            "method": "GET",
+            "url": {"raw": "http://localhost:8080/api/lobbies/{{lobbyCode}}/state"}
+          }
+        },
+        {
+          "name": "Join Lobby",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:8080/api/lobbies/{{lobbyCode}}/join"}
+          }
+        },
+        {
+          "name": "Set Ready",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:8080/api/lobbies/{{lobbyCode}}/ready?ready=true"}
+          }
+        },
+        {
+          "name": "Start Game",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:8080/api/lobbies/{{lobbyCode}}/start"}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Game",
+      "item": [
+        {
+          "name": "Get Game State",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:8080/api/games/{{gameId}}/state"}
+          }
+        },
+        {
+          "name": "Submit Vote",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"},
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetPlayerId\": 1\n}"
+            },
+            "url": {"raw": "http://localhost:8080/api/games/{{gameId}}/actions/vote"}
+          }
+        },
+        {
+          "name": "Submit Power Action",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"},
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"actionType\": \"SEER_INSPECT\",\n  \"targetPlayerId\": 2\n}"
+            },
+            "url": {"raw": "http://localhost:8080/api/games/{{gameId}}/actions/power"}
+          }
+        },
+        {
+          "name": "Skip Action",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:8080/api/games/{{gameId}}/actions/skip"}
+          }
+        },
+        {
+          "name": "Get Chat Messages",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:8080/api/games/{{gameId}}/chat?since=0"}
+          }
+        },
+        {
+          "name": "Send Chat Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"},
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Hello everyone!\"\n}"
+            },
+            "url": {"raw": "http://localhost:8080/api/games/{{gameId}}/chat"}
+          }
+        },
+        {
+          "name": "Get Wolf Victim (Witch)",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:8080/api/games/{{gameId}}/wolf-victim"}
+          }
+        },
+        {
+          "name": "Get Inspection Result (Seer)",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:8080/api/games/{{gameId}}/inspection-result"}
+          }
+        }
+      ]
+    }
+  ]
+}
+

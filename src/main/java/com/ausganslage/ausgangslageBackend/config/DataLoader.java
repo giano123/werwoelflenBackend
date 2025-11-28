@@ -1,62 +1,69 @@
 package com.ausganslage.ausgangslageBackend.config;
 
-import com.ausganslage.ausgangslageBackend.model.Person;
-import com.ausganslage.ausgangslageBackend.model.Todo;
-import com.ausganslage.ausgangslageBackend.repository.PersonRepository;
-import com.ausganslage.ausgangslageBackend.repository.TodoRepository;
+import com.ausganslage.ausgangslageBackend.enums.Faction;
+import com.ausganslage.ausgangslageBackend.enums.RoleName;
+import com.ausganslage.ausgangslageBackend.model.RoleTemplate;
+import com.ausganslage.ausgangslageBackend.repository.RoleTemplateRepository;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
-
 
 @Component
 public class DataLoader implements CommandLineRunner {
 
-    private final PersonRepository personRepository;
-    private final TodoRepository todoRepository;
+    private final RoleTemplateRepository roleTemplateRepository;
 
-    public DataLoader(PersonRepository personRepository, TodoRepository todoRepository) {
-        this.personRepository = personRepository;
-        this.todoRepository = todoRepository;
+    public DataLoader(RoleTemplateRepository roleTemplateRepository) {
+        this.roleTemplateRepository = roleTemplateRepository;
     }
 
     @Override
     public void run(String... args) {
-        // Create Persons
-        Person marco = new Person();
-        marco.setName("Marco");
-        personRepository.save(marco);
+        if (roleTemplateRepository.count() > 0) {
+            System.out.println("Role templates already loaded ✅");
+            return;
+        }
 
-        Person anna = new Person();
-        anna.setName("Anna");
-        personRepository.save(anna);
+        RoleTemplate werewolf = new RoleTemplate();
+        werewolf.setName(RoleName.WEREWOLF);
+        werewolf.setFaction(Faction.WOLVES);
+        werewolf.setHasNightPower(true);
+        werewolf.setDefaultCount(2);
+        werewolf.setDescription("Wakes at night to kill villagers");
+        roleTemplateRepository.save(werewolf);
 
-        // Add Todos for Marco
-        Todo t1 = new Todo();
-        t1.setTitle("Finish Spring Boot project");
-        t1.setCompleted(false);
-        t1.setPerson(marco);
-        todoRepository.save(t1);
+        RoleTemplate villager = new RoleTemplate();
+        villager.setName(RoleName.VILLAGER);
+        villager.setFaction(Faction.VILLAGE);
+        villager.setHasNightPower(false);
+        villager.setDefaultCount(0);
+        villager.setDescription("Regular villager with no special powers");
+        roleTemplateRepository.save(villager);
 
-        Todo t2 = new Todo();
-        t2.setTitle("Write documentation");
-        t2.setCompleted(true);
-        t2.setPerson(marco);
-        todoRepository.save(t2);
+        RoleTemplate seer = new RoleTemplate();
+        seer.setName(RoleName.SEER);
+        seer.setFaction(Faction.VILLAGE);
+        seer.setHasNightPower(true);
+        seer.setDefaultCount(1);
+        seer.setDescription("Can investigate one player each night");
+        roleTemplateRepository.save(seer);
 
-        // Add Todos for Anna
-        Todo t3 = new Todo();
-        t3.setTitle("Prepare presentation");
-        t3.setCompleted(false);
-        t3.setPerson(anna);
-        todoRepository.save(t3);
+        RoleTemplate witch = new RoleTemplate();
+        witch.setName(RoleName.WITCH);
+        witch.setFaction(Faction.VILLAGE);
+        witch.setHasNightPower(true);
+        witch.setDefaultCount(1);
+        witch.setDescription("Has one heal and one poison potion");
+        roleTemplateRepository.save(witch);
 
-        // Add a Todo without a person (optional)
-        Todo t4 = new Todo();
-        t4.setTitle("General task (no person)");
-        t4.setCompleted(false);
-        todoRepository.save(t4);
+        RoleTemplate hunter = new RoleTemplate();
+        hunter.setName(RoleName.HUNTER);
+        hunter.setFaction(Faction.VILLAGE);
+        hunter.setHasNightPower(false);
+        hunter.setDefaultCount(1);
+        hunter.setDescription("Takes revenge when killed");
+        roleTemplateRepository.save(hunter);
 
-        System.out.println("Sample data loaded ✅");
+        System.out.println("Role templates loaded ✅");
     }
 }
 
