@@ -2,6 +2,10 @@ package com.ausganslage.ausgangslageBackend.service;
 
 import com.ausganslage.ausgangslageBackend.dto.*;
 import com.ausganslage.ausgangslageBackend.enums.*;
+import com.ausganslage.ausgangslageBackend.exception.InvalidActionException;
+import com.ausganslage.ausgangslageBackend.exception.InvalidGameStateException;
+import com.ausganslage.ausgangslageBackend.exception.ResourceNotFoundException;
+import com.ausganslage.ausgangslageBackend.exception.UnauthorizedActionException;
 import com.ausganslage.ausgangslageBackend.model.*;
 import com.ausganslage.ausgangslageBackend.repository.*;
 import com.ausganslage.ausgangslageBackend.util.AuditLogger;
@@ -57,7 +61,7 @@ public class GameService {
         Lobby lobby = lobbyRepository.findByLobbyCode(lobbyCode)
                 .orElseThrow(() -> {
                     logger.warn("Start game failed - lobby not found: lobbyCode={}", lobbyCode);
-                    return new IllegalArgumentException("Lobby not found");
+                    return new ResourceNotFoundException("Lobby", lobbyCode);
                 });
 
         LoggingContext.setLobbyId(lobby.getId());
@@ -67,13 +71,13 @@ public class GameService {
                 lobby.getId(), currentUser.getId(), lobby.getHostUserId());
             AuditLogger.logUnauthorizedAccess(currentUser.getId(), currentUser.getUsername(),
                 "Start game (not host)");
-            throw new IllegalStateException("Only the host can start the game");
+            throw new UnauthorizedActionException("Only the host can start the game", currentUser.getId(), "START_GAME");
         }
 
         if (lobby.getStatus() != LobbyStatus.OPEN) {
             logger.warn("Start game failed - lobby not open: lobbyId={}, status={}",
                 lobby.getId(), lobby.getStatus());
-            throw new IllegalStateException("Lobby is not open");
+            throw new InvalidGameStateException("Lobby is not open", lobby.getStatus().toString(), LobbyStatus.OPEN.toString());
         }
 
         List<LobbyMember> members = lobbyMemberRepository.findByLobbyId(lobby.getId());
@@ -84,14 +88,14 @@ public class GameService {
         if (members.size() < 4) {
             logger.warn("Start game failed - not enough players: lobbyId={}, playerCount={}",
                 lobby.getId(), members.size());
-            throw new IllegalStateException("Need at least 4 players to start");
+            throw new InvalidActionException("START_GAME", "Need at least 4 players to start");
         }
 
         long notReady = members.stream().filter(m -> !m.getIsReady()).count();
         if (notReady > 0) {
             logger.warn("Start game failed - players not ready: lobbyId={}, notReadyCount={}",
                 lobby.getId(), notReady);
-            throw new IllegalStateException("All players must be ready");
+            throw new InvalidActionException("START_GAME", "All players must be ready");
         }
 
         logger.info("Creating game: lobbyId={}, playerCount={}", lobby.getId(), members.size());
@@ -133,25 +137,25 @@ public class GameService {
             game.getId(), playerCount, werewolfCount);
 
         RoleTemplate werewolf = roleTemplateRepository.findByName(RoleName.WEREWOLF)
-                .orElseThrow(() -> new IllegalStateException("Werewolf role not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("RoleTemplate", "WEREWOLF"));
         for (int i = 0; i < werewolfCount; i++) {
             rolesToAssign.add(werewolf);
         }
 
         RoleTemplate seer = roleTemplateRepository.findByName(RoleName.SEER)
-                .orElseThrow(() -> new IllegalStateException("Seer role not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("RoleTemplate", "SEER"));
         rolesToAssign.add(seer);
 
         RoleTemplate witch = roleTemplateRepository.findByName(RoleName.WITCH)
-                .orElseThrow(() -> new IllegalStateException("Witch role not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("RoleTemplate", "WITCH"));
         rolesToAssign.add(witch);
 
         RoleTemplate hunter = roleTemplateRepository.findByName(RoleName.HUNTER)
-                .orElseThrow(() -> new IllegalStateException("Hunter role not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("RoleTemplate", "HUNTER"));
         rolesToAssign.add(hunter);
 
         RoleTemplate villager = roleTemplateRepository.findByName(RoleName.VILLAGER)
-                .orElseThrow(() -> new IllegalStateException("Villager role not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("RoleTemplate", "VILLAGER"));
         while (rolesToAssign.size() < playerCount) {
             rolesToAssign.add(villager);
         }
@@ -210,18 +214,18 @@ public class GameService {
         Game game = gameRepository.findById(gameId)
                 .orElseThrow(() -> {
                     logger.warn("Get game state failed - game not found: gameId={}", gameId);
-                    return new IllegalArgumentException("Game not found");
+                    return new ResourceNotFoundException("Game", gameId);
                 });
 
         GamePlayer currentPlayer = gamePlayerRepository.findByGameIdAndUserId(gameId, currentUser.getId())
                 .orElseThrow(() -> {
                     logger.warn("Get game state failed - user not in game: gameId={}, userId={}",
                         gameId, currentUser.getId());
-                    return new IllegalArgumentException("You are not in this game");
+                    return new UnauthorizedActionException("You are not in this game", currentUser.getId(), "GET_GAME_STATE");
                 });
 
         RoleTemplate currentRole = roleTemplateRepository.findById(currentPlayer.getRoleId())
-                .orElseThrow(() -> new IllegalStateException("Role not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("RoleTemplate", currentPlayer.getRoleId()));
 
         logger.trace("Game state retrieved: gameId={}, userId={}, phase={}, dayNumber={}, isAlive={}",
             gameId, currentUser.getId(), game.getCurrentPhase(), game.getDayNumber(), currentPlayer.getIsAlive());
@@ -261,24 +265,24 @@ public class GameService {
         Game game = gameRepository.findById(gameId)
                 .orElseThrow(() -> {
                     logger.warn("Vote failed - game not found: gameId={}", gameId);
-                    return new IllegalArgumentException("Game not found");
+                    return new ResourceNotFoundException("Game", gameId);
                 });
 
         GamePlayer currentPlayer = gamePlayerRepository.findByGameIdAndUserId(gameId, currentUser.getId())
                 .orElseThrow(() -> {
                     logger.warn("Vote failed - user not in game: gameId={}, userId={}",
                         gameId, currentUser.getId());
-                    return new IllegalArgumentException("You are not in this game");
+                    return new UnauthorizedActionException("You are not in this game", currentUser.getId(), "SUBMIT_VOTE");
                 });
 
         if (!currentPlayer.getIsAlive()) {
             logger.warn("Vote failed - player is dead: gameId={}, playerId={}",
                 gameId, currentPlayer.getId());
-            throw new IllegalStateException("Dead players cannot vote");
+            throw new InvalidActionException("SUBMIT_VOTE", "Dead players cannot vote");
         }
 
         RoleTemplate currentRole = roleTemplateRepository.findById(currentPlayer.getRoleId())
-                .orElseThrow(() -> new IllegalStateException("Role not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("RoleTemplate", currentPlayer.getRoleId()));
 
         ActionType actionType;
         if (game.getCurrentPhase() == GamePhase.DAY_VOTING) {
@@ -292,20 +296,20 @@ public class GameService {
         } else {
             logger.warn("Vote failed - invalid phase: gameId={}, phase={}, role={}",
                 gameId, game.getCurrentPhase(), currentRole.getName());
-            throw new IllegalStateException("Invalid voting phase");
+            throw new InvalidGameStateException("Invalid voting phase", game.getCurrentPhase().toString(), "DAY_VOTING or NIGHT_WOLVES");
         }
 
         GamePlayer targetPlayer = gamePlayerRepository.findById(request.getTargetPlayerId())
                 .orElseThrow(() -> {
                     logger.warn("Vote failed - target not found: gameId={}, targetPlayerId={}",
                         gameId, request.getTargetPlayerId());
-                    return new IllegalArgumentException("Target player not found");
+                    return new ResourceNotFoundException("GamePlayer", request.getTargetPlayerId());
                 });
 
         if (!targetPlayer.getIsAlive()) {
             logger.warn("Vote failed - target is dead: gameId={}, targetPlayerId={}",
                 gameId, request.getTargetPlayerId());
-            throw new IllegalArgumentException("Cannot vote for dead player");
+            throw new InvalidActionException("SUBMIT_VOTE", "Cannot vote for dead player");
         }
 
         if (actionType == ActionType.VOTE_WOLF_KILL && currentRole.getName() == RoleName.WEREWOLF) {
@@ -313,7 +317,7 @@ public class GameService {
             if (targetRole != null && targetRole.getName() == RoleName.WEREWOLF) {
                 logger.warn("Vote failed - werewolf trying to kill werewolf: gameId={}, voterId={}, targetId={}",
                     gameId, currentPlayer.getId(), targetPlayer.getId());
-                throw new IllegalArgumentException("Werewolves cannot kill each other");
+                throw new InvalidActionException("VOTE_WOLF_KILL", "Werewolves cannot kill each other");
             }
         }
 
@@ -360,24 +364,24 @@ public class GameService {
         Game game = gameRepository.findById(gameId)
                 .orElseThrow(() -> {
                     logger.warn("Power action failed - game not found: gameId={}", gameId);
-                    return new IllegalArgumentException("Game not found");
+                    return new ResourceNotFoundException("Game", gameId);
                 });
 
         GamePlayer currentPlayer = gamePlayerRepository.findByGameIdAndUserId(gameId, currentUser.getId())
                 .orElseThrow(() -> {
                     logger.warn("Power action failed - user not in game: gameId={}, userId={}",
                         gameId, currentUser.getId());
-                    return new IllegalArgumentException("You are not in this game");
+                    return new UnauthorizedActionException("You are not in this game", currentUser.getId(), "POWER_ACTION");
                 });
 
         if (!currentPlayer.getIsAlive() && request.getActionType() != ActionType.HUNTER_SHOOT) {
             logger.warn("Power action failed - player is dead: gameId={}, playerId={}, actionType={}",
                 gameId, currentPlayer.getId(), request.getActionType());
-            throw new IllegalStateException("Dead players cannot use powers");
+            throw new InvalidActionException("POWER_ACTION", "Dead players cannot use powers");
         }
 
         RoleTemplate currentRole = roleTemplateRepository.findById(currentPlayer.getRoleId())
-                .orElseThrow(() -> new IllegalStateException("Role not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("RoleTemplate", currentPlayer.getRoleId()));
 
         logger.debug("Validating power action: gameId={}, playerId={}, role={}, actionType={}",
             gameId, currentPlayer.getId(), currentRole.getName(), request.getActionType());
@@ -426,7 +430,7 @@ public class GameService {
             gamePlayerRepository.save(currentPlayer);
 
             GamePlayer target = gamePlayerRepository.findById(request.getTargetPlayerId())
-                    .orElseThrow(() -> new IllegalArgumentException("Target not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("GamePlayer", request.getTargetPlayerId()));
             killPlayer(target, game);
         }
 
@@ -436,17 +440,17 @@ public class GameService {
     @Transactional
     public void skipAction(Long gameId, User currentUser) {
         Game game = gameRepository.findById(gameId)
-                .orElseThrow(() -> new IllegalArgumentException("Game not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Game", gameId));
 
         GamePlayer currentPlayer = gamePlayerRepository.findByGameIdAndUserId(gameId, currentUser.getId())
-                .orElseThrow(() -> new IllegalArgumentException("You are not in this game"));
+                .orElseThrow(() -> new UnauthorizedActionException("You are not in this game", currentUser.getId(), "SKIP_ACTION"));
 
         if (!currentPlayer.getIsAlive()) {
-            throw new IllegalStateException("Dead players cannot skip");
+            throw new InvalidActionException("SKIP_ACTION", "Dead players cannot skip");
         }
 
         RoleTemplate currentRole = roleTemplateRepository.findById(currentPlayer.getRoleId())
-                .orElseThrow(() -> new IllegalStateException("Role not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("RoleTemplate", currentPlayer.getRoleId()));
 
         if (game.getCurrentPhase() == GamePhase.NIGHT_SEER && currentRole.getName() == RoleName.SEER) {
             GameAction skipAction = new GameAction();
@@ -469,7 +473,7 @@ public class GameService {
             skipAction.setCreatedAt(Instant.now());
             gameActionRepository.save(skipAction);
         } else {
-            throw new IllegalStateException("Cannot skip during this phase");
+            throw new InvalidGameStateException("Cannot skip during this phase", game.getCurrentPhase().toString(), "NIGHT_SEER or NIGHT_WITCH");
         }
 
         checkAndAdvancePhase(game);
@@ -481,60 +485,61 @@ public class GameService {
         switch (request.getActionType()) {
             case SEER_INSPECT:
                 if (role.getName() != RoleName.SEER) {
-                    throw new IllegalStateException("Only the Seer can inspect");
+                    throw new UnauthorizedActionException("Only the Seer can inspect", player.getUserId(), "SEER_INSPECT");
                 }
                 if (game.getCurrentPhase() != GamePhase.NIGHT_SEER) {
-                    throw new IllegalStateException("Can only inspect during Seer phase");
+                    throw new InvalidGameStateException("Can only inspect during Seer phase", game.getCurrentPhase().toString(), GamePhase.NIGHT_SEER.toString());
                 }
                 break;
 
             case WITCH_HEAL:
                 if (role.getName() != RoleName.WITCH) {
-                    throw new IllegalStateException("Only the Witch can heal");
+                    throw new UnauthorizedActionException("Only the Witch can heal", player.getUserId(), "WITCH_HEAL");
                 }
                 if (game.getCurrentPhase() != GamePhase.NIGHT_WITCH) {
-                    throw new IllegalStateException("Can only heal during Witch phase");
+                    throw new InvalidGameStateException("Can only heal during Witch phase", game.getCurrentPhase().toString(), GamePhase.NIGHT_WITCH.toString());
                 }
                 if (!Boolean.TRUE.equals(flags.get("healPotion"))) {
-                    throw new IllegalStateException("Heal potion already used");
+                    throw new InvalidActionException("WITCH_HEAL", "Heal potion already used");
                 }
                 Long wolfVictimId = getWolfVictimId(game);
                 if (wolfVictimId == null) {
-                    throw new IllegalStateException("No wolf victim to heal");
+                    throw new InvalidActionException("WITCH_HEAL", "No wolf victim to heal");
                 }
                 if (request.getTargetPlayerId() != null && !request.getTargetPlayerId().equals(wolfVictimId)) {
-                    throw new IllegalArgumentException("Can only heal the wolf victim");
+                    throw new InvalidActionException("WITCH_HEAL", "Can only heal the wolf victim");
                 }
                 break;
 
             case WITCH_POISON:
                 if (role.getName() != RoleName.WITCH) {
-                    throw new IllegalStateException("Only the Witch can poison");
+                    throw new UnauthorizedActionException("Only the Witch can poison", player.getUserId(), "WITCH_POISON");
                 }
                 if (game.getCurrentPhase() != GamePhase.NIGHT_WITCH) {
-                    throw new IllegalStateException("Can only poison during Witch phase");
+                    throw new InvalidGameStateException("Can only poison during Witch phase", game.getCurrentPhase().toString(), GamePhase.NIGHT_WITCH.toString());
                 }
                 if (!Boolean.TRUE.equals(flags.get("poisonPotion"))) {
-                    throw new IllegalStateException("Poison potion already used");
+                    throw new InvalidActionException("WITCH_POISON", "Poison potion already used");
                 }
                 break;
 
             case HUNTER_SHOOT:
                 if (role.getName() != RoleName.HUNTER) {
-                    throw new IllegalStateException("Only the Hunter can shoot");
+                    throw new UnauthorizedActionException("Only the Hunter can shoot", player.getUserId(), "HUNTER_SHOOT");
                 }
                 if (!Boolean.TRUE.equals(flags.get("hunterShotAvailable"))) {
-                    throw new IllegalStateException("Hunter shot not available");
+                    throw new InvalidActionException("HUNTER_SHOOT", "Hunter shot not available");
                 }
                 if (game.getCurrentPhase() != GamePhase.DAY_DISCUSSION &&
                     game.getCurrentPhase() != GamePhase.DAY_VOTING &&
                     game.getCurrentPhase() != GamePhase.NIGHT_WITCH) {
-                    throw new IllegalStateException("Hunter can only shoot during day phases or after night resolution");
+                    throw new InvalidGameStateException("Hunter can only shoot during day phases or after night resolution",
+                        game.getCurrentPhase().toString(), "DAY_DISCUSSION, DAY_VOTING, or NIGHT_WITCH");
                 }
                 break;
 
             default:
-                throw new IllegalArgumentException("Invalid power action type");
+                throw new InvalidActionException("POWER_ACTION", "Invalid power action type");
         }
     }
 
@@ -938,13 +943,14 @@ public class GameService {
         Game game = gameRepository.findById(gameId)
                 .orElseThrow(() -> {
                     logger.warn("Transition to voting failed - game not found: gameId={}", gameId);
-                    return new IllegalArgumentException("Game not found");
+                    return new ResourceNotFoundException("Game", gameId);
                 });
 
         if (game.getCurrentPhase() != GamePhase.DAY_DISCUSSION) {
             logger.warn("Transition to voting failed - wrong phase: gameId={}, currentPhase={}",
                 gameId, game.getCurrentPhase());
-            throw new IllegalStateException("Can only transition to voting from discussion phase");
+            throw new InvalidGameStateException("Can only transition to voting from discussion phase",
+                game.getCurrentPhase().toString(), GamePhase.DAY_DISCUSSION.toString());
         }
 
         game.setCurrentPhase(GamePhase.DAY_VOTING);
@@ -1049,10 +1055,10 @@ public class GameService {
     @Transactional
     public List<ChatMessageDto> getChatMessages(Long gameId, User currentUser, Long sinceTimestamp) {
         GamePlayer player = gamePlayerRepository.findByGameIdAndUserId(gameId, currentUser.getId())
-                .orElseThrow(() -> new IllegalArgumentException("You are not in this game"));
+                .orElseThrow(() -> new UnauthorizedActionException("You are not in this game", currentUser.getId(), "GET_CHAT_MESSAGES"));
 
         Game game = gameRepository.findById(gameId)
-                .orElseThrow(() -> new IllegalArgumentException("Game not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Game", gameId));
 
         RoleTemplate role = roleTemplateRepository.findById(player.getRoleId()).orElse(null);
 
@@ -1089,11 +1095,11 @@ public class GameService {
                 .orElseThrow(() -> {
                     logger.warn("Send chat failed - user not in game: gameId={}, userId={}",
                         gameId, currentUser.getId());
-                    return new IllegalArgumentException("You are not in this game");
+                    return new UnauthorizedActionException("You are not in this game", currentUser.getId(), "SEND_CHAT");
                 });
 
         Game game = gameRepository.findById(gameId)
-                .orElseThrow(() -> new IllegalArgumentException("Game not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Game", gameId));
 
         RoleTemplate role = roleTemplateRepository.findById(player.getRoleId()).orElse(null);
 
@@ -1107,7 +1113,8 @@ public class GameService {
         } else {
             logger.warn("Send chat failed - invalid phase: gameId={}, phase={}, role={}",
                 gameId, game.getCurrentPhase(), role != null ? role.getName() : "null");
-            throw new IllegalStateException("Cannot chat during this phase");
+            throw new InvalidGameStateException("Cannot chat during this phase",
+                game.getCurrentPhase().toString(), "DAY_DISCUSSION, DAY_VOTING, or NIGHT_WOLVES");
         }
 
         ChatMessage message = new ChatMessage();
@@ -1182,20 +1189,21 @@ public class GameService {
     @Transactional(readOnly = true)
     public WolfVictimDto getWolfVictim(Long gameId, User currentUser) {
         Game game = gameRepository.findById(gameId)
-                .orElseThrow(() -> new IllegalArgumentException("Game not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Game", gameId));
 
         GamePlayer player = gamePlayerRepository.findByGameIdAndUserId(gameId, currentUser.getId())
-                .orElseThrow(() -> new IllegalArgumentException("You are not in this game"));
+                .orElseThrow(() -> new UnauthorizedActionException("You are not in this game", currentUser.getId(), "GET_WOLF_VICTIM"));
 
         RoleTemplate role = roleTemplateRepository.findById(player.getRoleId())
-                .orElseThrow(() -> new IllegalStateException("Role not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("RoleTemplate", player.getRoleId()));
 
         if (role.getName() != RoleName.WITCH) {
-            throw new IllegalStateException("Only the Witch can see the wolf victim");
+            throw new UnauthorizedActionException("Only the Witch can see the wolf victim", currentUser.getId(), "GET_WOLF_VICTIM");
         }
 
         if (game.getCurrentPhase() != GamePhase.NIGHT_WITCH) {
-            throw new IllegalStateException("Can only see victim during Witch phase");
+            throw new InvalidGameStateException("Can only see victim during Witch phase",
+                game.getCurrentPhase().toString(), GamePhase.NIGHT_WITCH.toString());
         }
 
         List<GameAction> wolfVotes = gameActionRepository.findByGameIdAndDayNumberAndPhaseAndActionType(
@@ -1219,17 +1227,17 @@ public class GameService {
     @Transactional(readOnly = true)
     public InspectionResultDto getLastInspectionResult(Long gameId, User currentUser) {
         GamePlayer player = gamePlayerRepository.findByGameIdAndUserId(gameId, currentUser.getId())
-                .orElseThrow(() -> new IllegalArgumentException("You are not in this game"));
+                .orElseThrow(() -> new UnauthorizedActionException("You are not in this game", currentUser.getId(), "GET_INSPECTION_RESULT"));
 
         RoleTemplate role = roleTemplateRepository.findById(player.getRoleId())
-                .orElseThrow(() -> new IllegalStateException("Role not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("RoleTemplate", player.getRoleId()));
 
         if (role.getName() != RoleName.SEER) {
-            throw new IllegalStateException("Only the Seer can see inspection results");
+            throw new UnauthorizedActionException("Only the Seer can see inspection results", currentUser.getId(), "GET_INSPECTION_RESULT");
         }
 
         Game game = gameRepository.findById(gameId)
-                .orElseThrow(() -> new IllegalArgumentException("Game not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Game", gameId));
 
         List<GameAction> inspections = gameActionRepository.findByGameIdAndActorPlayerIdAndActionType(
                 game.getId(), player.getId(), ActionType.SEER_INSPECT);

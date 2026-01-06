@@ -4,6 +4,9 @@ import com.ausganslage.ausgangslageBackend.dto.CreateLobbyRequest;
 import com.ausganslage.ausgangslageBackend.dto.LobbyMemberDto;
 import com.ausganslage.ausgangslageBackend.dto.LobbyStateDto;
 import com.ausganslage.ausgangslageBackend.enums.LobbyStatus;
+import com.ausganslage.ausgangslageBackend.exception.InvalidActionException;
+import com.ausganslage.ausgangslageBackend.exception.InvalidGameStateException;
+import com.ausganslage.ausgangslageBackend.exception.ResourceNotFoundException;
 import com.ausganslage.ausgangslageBackend.model.Lobby;
 import com.ausganslage.ausgangslageBackend.model.LobbyMember;
 import com.ausganslage.ausgangslageBackend.model.User;
@@ -78,7 +81,7 @@ public class LobbyService {
     @Transactional(readOnly = true)
     public LobbyStateDto getLobbyState(String lobbyCode) {
         Lobby lobby = lobbyRepository.findByLobbyCode(lobbyCode)
-                .orElseThrow(() -> new IllegalArgumentException("Lobby not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Lobby", lobbyCode));
 
         List<LobbyMember> members = lobbyMemberRepository.findByLobbyId(lobby.getId());
 
@@ -105,7 +108,7 @@ public class LobbyService {
         Lobby lobby = lobbyRepository.findByLobbyCode(lobbyCode)
                 .orElseThrow(() -> {
                     logger.warn("Join lobby failed - lobby not found: lobbyCode={}", lobbyCode);
-                    return new IllegalArgumentException("Lobby not found");
+                    return new ResourceNotFoundException("Lobby", lobbyCode);
                 });
 
         LoggingContext.setLobbyId(lobby.getId());
@@ -113,20 +116,20 @@ public class LobbyService {
         if (lobby.getStatus() != LobbyStatus.OPEN) {
             logger.warn("Join lobby failed - lobby not open: lobbyId={}, lobbyCode={}, status={}",
                 lobby.getId(), lobbyCode, lobby.getStatus());
-            throw new IllegalStateException("Lobby is not open");
+            throw new InvalidGameStateException("Lobby is not open", lobby.getStatus().toString(), LobbyStatus.OPEN.toString());
         }
 
         long currentMemberCount = lobbyMemberRepository.countByLobbyId(lobby.getId());
         if (currentMemberCount >= lobby.getMaxPlayers()) {
             logger.warn("Join lobby failed - lobby full: lobbyId={}, currentMembers={}, maxPlayers={}",
                 lobby.getId(), currentMemberCount, lobby.getMaxPlayers());
-            throw new IllegalStateException("Lobby is full");
+            throw new InvalidActionException("JOIN_LOBBY", "Lobby is full");
         }
 
         if (lobbyMemberRepository.findByLobbyIdAndUserId(lobby.getId(), currentUser.getId()).isPresent()) {
             logger.warn("Join lobby failed - user already in lobby: userId={}, lobbyId={}",
                 currentUser.getId(), lobby.getId());
-            throw new IllegalStateException("Already in lobby");
+            throw new InvalidActionException("JOIN_LOBBY", "Already in lobby");
         }
 
         LobbyMember member = new LobbyMember();
@@ -157,7 +160,7 @@ public class LobbyService {
         Lobby lobby = lobbyRepository.findByLobbyCode(lobbyCode)
                 .orElseThrow(() -> {
                     logger.warn("Leave lobby failed - lobby not found: lobbyCode={}", lobbyCode);
-                    return new IllegalArgumentException("Lobby not found");
+                    return new ResourceNotFoundException("Lobby", lobbyCode);
                 });
 
         LoggingContext.setLobbyId(lobby.getId());
@@ -193,10 +196,10 @@ public class LobbyService {
     @Transactional
     public void setReady(String lobbyCode, User currentUser, boolean ready) {
         Lobby lobby = lobbyRepository.findByLobbyCode(lobbyCode)
-                .orElseThrow(() -> new IllegalArgumentException("Lobby not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Lobby", lobbyCode));
 
         LobbyMember member = lobbyMemberRepository.findByLobbyIdAndUserId(lobby.getId(), currentUser.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Not a member of this lobby"));
+                .orElseThrow(() -> new InvalidActionException("SET_READY", "Not a member of this lobby"));
 
         member.setIsReady(ready);
         lobbyMemberRepository.save(member);

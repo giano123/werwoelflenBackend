@@ -4,6 +4,9 @@ import com.ausganslage.ausgangslageBackend.dto.AuthResponse;
 import com.ausganslage.ausgangslageBackend.dto.LoginRequest;
 import com.ausganslage.ausgangslageBackend.dto.RegisterRequest;
 import com.ausganslage.ausgangslageBackend.dto.UserDto;
+import com.ausganslage.ausgangslageBackend.exception.DuplicateResourceException;
+import com.ausganslage.ausgangslageBackend.exception.ResourceNotFoundException;
+import com.ausganslage.ausgangslageBackend.exception.UnauthorizedActionException;
 import com.ausganslage.ausgangslageBackend.model.Session;
 import com.ausganslage.ausgangslageBackend.model.User;
 import com.ausganslage.ausgangslageBackend.repository.SessionRepository;
@@ -41,12 +44,12 @@ public class AuthService {
         if (userRepository.existsByUsername(request.getUsername())) {
             logger.warn("Registration failed - username already exists: {}", request.getUsername());
             AuditLogger.logAuthenticationFailure(request.getUsername(), "Username already exists");
-            throw new IllegalArgumentException("Username already exists");
+            throw new DuplicateResourceException("User", "username", request.getUsername());
         }
         if (userRepository.existsByEmail(request.getEmail())) {
             logger.warn("Registration failed - email already exists: {}", request.getEmail());
             AuditLogger.logAuthenticationFailure(request.getUsername(), "Email already exists");
-            throw new IllegalArgumentException("Email already exists");
+            throw new DuplicateResourceException("User", "email", request.getEmail());
         }
 
         logger.debug("Creating new user with username: {}", request.getUsername());
@@ -83,7 +86,7 @@ public class AuthService {
                 .orElseThrow(() -> {
                     logger.warn("Login failed - user not found: {}", request.getUsernameOrEmail());
                     AuditLogger.logAuthenticationFailure(request.getUsernameOrEmail(), "User not found");
-                    return new IllegalArgumentException("Invalid credentials");
+                    return new ResourceNotFoundException("User", request.getUsernameOrEmail());
                 });
 
         LoggingContext.setUserId(user.getId());
@@ -93,7 +96,7 @@ public class AuthService {
             logger.warn("Login failed - invalid password for user: userId={}, username={}",
                 user.getId(), user.getUsername());
             AuditLogger.logAuthenticationFailure(user.getUsername(), "Invalid password");
-            throw new IllegalArgumentException("Invalid credentials");
+            throw new UnauthorizedActionException("Invalid credentials", user.getId(), "LOGIN");
         }
 
         logger.info("User authenticated successfully: userId={}, username={}", user.getId(), user.getUsername());
