@@ -10,6 +10,20 @@ import org.springframework.context.annotation.Configuration;
 public class SecurityConfig {
 
     @Bean
+    public CorsFilter corsFilter() {
+        return new CorsFilter();
+    }
+
+    @Bean
+    public FilterRegistrationBean<CorsFilter> corsFilterRegistration(CorsFilter filter) {
+        FilterRegistrationBean<CorsFilter> registrationBean = new FilterRegistrationBean<>();
+        registrationBean.setFilter(filter);
+        registrationBean.addUrlPatterns("/api/*");
+        registrationBean.setOrder(0);
+        return registrationBean;
+    }
+
+    @Bean
     public AuthenticationFilter authenticationFilter(SessionRepository sessionRepository, UserRepository userRepository) {
         return new AuthenticationFilter(sessionRepository, userRepository);
     }
@@ -19,6 +33,7 @@ public class SecurityConfig {
         FilterRegistrationBean<AuthenticationFilter> registrationBean = new FilterRegistrationBean<>();
         registrationBean.setFilter(filter);
         registrationBean.addUrlPatterns("/api/*");
+        registrationBean.setOrder(1);
         return registrationBean;
     }
 }

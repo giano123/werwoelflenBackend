@@ -35,6 +35,10 @@ public class Game {
 
     private Instant finishedAt;
 
+    @Version
+    @Column(nullable = false)
+    private Long version = 0L;
+
     public Game() {
     }
 
@@ -111,6 +115,14 @@ public class Game {
 
     public void setFinishedAt(Instant finishedAt) {
         this.finishedAt = finishedAt;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
     }
 }
 

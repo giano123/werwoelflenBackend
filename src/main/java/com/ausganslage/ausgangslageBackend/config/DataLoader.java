@@ -58,7 +58,7 @@ public class DataLoader implements CommandLineRunner {
         RoleTemplate hunter = new RoleTemplate();
         hunter.setName(RoleName.HUNTER);
         hunter.setFaction(Faction.VILLAGE);
-        hunter.setHasNightPower(false);
+        hunter.setHasNightPower(true);
         hunter.setDefaultCount(1);
         hunter.setDescription("Takes revenge when killed");
         roleTemplateRepository.save(hunter);

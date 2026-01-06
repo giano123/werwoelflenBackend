@@ -11,5 +11,6 @@ public interface GameActionRepository extends JpaRepository<GameAction, Long> {
     List<GameAction> findByGameIdAndDayNumberAndPhase(Long gameId, Integer dayNumber, GamePhase phase);
     Optional<GameAction> findByGameIdAndDayNumberAndPhaseAndActorPlayerId(Long gameId, Integer dayNumber, GamePhase phase, Long actorPlayerId);
     List<GameAction> findByGameIdAndDayNumberAndPhaseAndActionType(Long gameId, Integer dayNumber, GamePhase phase, ActionType actionType);
+    List<GameAction> findByGameIdAndActorPlayerIdAndActionType(Long gameId, Long actorPlayerId, ActionType actionType);
 }
 

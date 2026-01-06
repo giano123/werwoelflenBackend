@@ -10,7 +10,11 @@ import com.ausganslage.ausgangslageBackend.model.User;
 import com.ausganslage.ausgangslageBackend.repository.LobbyMemberRepository;
 import com.ausganslage.ausgangslageBackend.repository.LobbyRepository;
 import com.ausganslage.ausgangslageBackend.repository.UserRepository;
+import com.ausganslage.ausgangslageBackend.util.AuditLogger;
 import com.ausganslage.ausgangslageBackend.util.CodeGenerator;
+import com.ausganslage.ausgangslageBackend.util.LoggingContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,6 +24,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class LobbyService {
+
+    private static final Logger logger = LoggerFactory.getLogger(LobbyService.class);
 
     private final LobbyRepository lobbyRepository;
     private final LobbyMemberRepository lobbyMemberRepository;
@@ -33,6 +39,12 @@ public class LobbyService {
 
     @Transactional
     public LobbyStateDto createLobby(CreateLobbyRequest request, User currentUser) {
+        logger.info("Creating new lobby: hostUserId={}, hostUsername={}, maxPlayers={}",
+            currentUser.getId(), currentUser.getUsername(), request.getMaxPlayers());
+        LoggingContext.setAction("CREATE_LOBBY");
+        LoggingContext.setUserId(currentUser.getId());
+        LoggingContext.setUsername(currentUser.getUsername());
+
         Lobby lobby = new Lobby();
         lobby.setLobbyCode(generateUniqueLobbyCode());
         lobby.setHostUserId(currentUser.getId());
@@ -43,6 +55,9 @@ public class LobbyService {
 
         lobby = lobbyRepository.save(lobby);
 
+        LoggingContext.setLobbyId(lobby.getId());
+        logger.debug("Lobby entity created: lobbyId={}, lobbyCode={}", lobby.getId(), lobby.getLobbyCode());
+
         LobbyMember member = new LobbyMember();
         member.setLobbyId(lobby.getId());
         member.setUserId(currentUser.getId());
@@ -51,6 +66,11 @@ public class LobbyService {
         member.setJoinedAt(Instant.now());
 
         lobbyMemberRepository.save(member);
+
+        AuditLogger.logLobbyCreated(lobby.getId(), lobby.getLobbyCode(),
+            currentUser.getId(), currentUser.getUsername());
+        logger.info("Lobby created successfully: lobbyId={}, lobbyCode={}, hostUserId={}",
+            lobby.getId(), lobby.getLobbyCode(), currentUser.getId());
 
         return getLobbyState(lobby.getLobbyCode());
     }
@@ -76,19 +96,36 @@ public class LobbyService {
 
     @Transactional
     public LobbyStateDto joinLobby(String lobbyCode, User currentUser) {
+        logger.info("User attempting to join lobby: userId={}, username={}, lobbyCode={}",
+            currentUser.getId(), currentUser.getUsername(), lobbyCode);
+        LoggingContext.setAction("JOIN_LOBBY");
+        LoggingContext.setUserId(currentUser.getId());
+        LoggingContext.setUsername(currentUser.getUsername());
+
         Lobby lobby = lobbyRepository.findByLobbyCode(lobbyCode)
-                .orElseThrow(() -> new IllegalArgumentException("Lobby not found"));
+                .orElseThrow(() -> {
+                    logger.warn("Join lobby failed - lobby not found: lobbyCode={}", lobbyCode);
+                    return new IllegalArgumentException("Lobby not found");
+                });
+
+        LoggingContext.setLobbyId(lobby.getId());
 
         if (lobby.getStatus() != LobbyStatus.OPEN) {
+            logger.warn("Join lobby failed - lobby not open: lobbyId={}, lobbyCode={}, status={}",
+                lobby.getId(), lobbyCode, lobby.getStatus());
             throw new IllegalStateException("Lobby is not open");
         }
 
         long currentMemberCount = lobbyMemberRepository.countByLobbyId(lobby.getId());
         if (currentMemberCount >= lobby.getMaxPlayers()) {
+            logger.warn("Join lobby failed - lobby full: lobbyId={}, currentMembers={}, maxPlayers={}",
+                lobby.getId(), currentMemberCount, lobby.getMaxPlayers());
             throw new IllegalStateException("Lobby is full");
         }
 
         if (lobbyMemberRepository.findByLobbyIdAndUserId(lobby.getId(), currentUser.getId()).isPresent()) {
+            logger.warn("Join lobby failed - user already in lobby: userId={}, lobbyId={}",
+                currentUser.getId(), lobby.getId());
             throw new IllegalStateException("Already in lobby");
         }
 
@@ -101,26 +138,53 @@ public class LobbyService {
 
         lobbyMemberRepository.save(member);
 
+        AuditLogger.logPlayerJoinedLobby(lobby.getId(), lobbyCode,
+            currentUser.getId(), currentUser.getUsername());
+        logger.info("User joined lobby successfully: userId={}, username={}, lobbyId={}, lobbyCode={}",
+            currentUser.getId(), currentUser.getUsername(), lobby.getId(), lobbyCode);
+
         return getLobbyState(lobbyCode);
     }
 
     @Transactional
     public void leaveLobby(String lobbyCode, User currentUser) {
+        logger.info("User leaving lobby: userId={}, username={}, lobbyCode={}",
+            currentUser.getId(), currentUser.getUsername(), lobbyCode);
+        LoggingContext.setAction("LEAVE_LOBBY");
+        LoggingContext.setUserId(currentUser.getId());
+        LoggingContext.setUsername(currentUser.getUsername());
+
         Lobby lobby = lobbyRepository.findByLobbyCode(lobbyCode)
-                .orElseThrow(() -> new IllegalArgumentException("Lobby not found"));
+                .orElseThrow(() -> {
+                    logger.warn("Leave lobby failed - lobby not found: lobbyCode={}", lobbyCode);
+                    return new IllegalArgumentException("Lobby not found");
+                });
+
+        LoggingContext.setLobbyId(lobby.getId());
 
         lobbyMemberRepository.deleteByLobbyIdAndUserId(lobby.getId(), currentUser.getId());
 
+        AuditLogger.logPlayerLeftLobby(lobby.getId(), lobbyCode,
+            currentUser.getId(), currentUser.getUsername());
+        logger.info("User left lobby: userId={}, username={}, lobbyId={}",
+            currentUser.getId(), currentUser.getUsername(), lobby.getId());
+
         long remainingMembers = lobbyMemberRepository.countByLobbyId(lobby.getId());
         if (remainingMembers == 0) {
+            logger.info("Lobby empty after user left - deleting lobby: lobbyId={}, lobbyCode={}",
+                lobby.getId(), lobbyCode);
             lobbyRepository.delete(lobby);
         } else if (lobby.getHostUserId().equals(currentUser.getId())) {
+            logger.info("Host left lobby - transferring host role: lobbyId={}, oldHostId={}",
+                lobby.getId(), currentUser.getId());
             List<LobbyMember> members = lobbyMemberRepository.findByLobbyId(lobby.getId());
             if (!members.isEmpty()) {
                 LobbyMember newHost = members.get(0);
                 newHost.setIsHost(true);
                 lobbyMemberRepository.save(newHost);
                 lobby.setHostUserId(newHost.getUserId());
+                logger.info("Host role transferred: lobbyId={}, newHostId={}",
+                    lobby.getId(), newHost.getUserId());
                 lobbyRepository.save(lobby);
             }
         }

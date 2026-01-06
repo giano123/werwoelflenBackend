@@ -7,6 +7,9 @@ import com.ausganslage.ausgangslageBackend.model.User;
 import com.ausganslage.ausgangslageBackend.repository.GameRepository;
 import com.ausganslage.ausgangslageBackend.repository.LobbyRepository;
 import com.ausganslage.ausgangslageBackend.service.GameService;
+import com.ausganslage.ausgangslageBackend.util.LoggingContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,6 +18,8 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/games")
 public class GameController {
+
+    private static final Logger logger = LoggerFactory.getLogger(GameController.class);
 
     private final GameService gameService;
     private final GameRepository gameRepository;
@@ -29,21 +34,30 @@ public class GameController {
     @PostMapping("/start/{lobbyCode}")
     public ResponseEntity<Game> startGame(@PathVariable String lobbyCode,
                                           @RequestAttribute("currentUser") User currentUser) {
+        logger.info("API: Start game request - lobbyCode={}, userId={}", lobbyCode, currentUser.getId());
+        LoggingContext.setUserId(currentUser.getId());
+        LoggingContext.setUsername(currentUser.getUsername());
         try {
             Game game = gameService.startGame(lobbyCode, currentUser);
+            logger.info("API: Game started successfully - lobbyCode={}, gameId={}", lobbyCode, game.getId());
             return ResponseEntity.ok(game);
         } catch (IllegalArgumentException | IllegalStateException e) {
+            logger.warn("API: Start game failed - lobbyCode={}, error={}", lobbyCode, e.getMessage());
             return ResponseEntity.badRequest().build();
+        } finally {
+            LoggingContext.clear();
         }
     }
 
     @GetMapping("/{gameId}/state")
     public ResponseEntity<GameStateDto> getGameState(@PathVariable Long gameId,
                                                       @RequestAttribute("currentUser") User currentUser) {
+        logger.trace("API: Get game state - gameId={}, userId={}", gameId, currentUser.getId());
         try {
             GameStateDto state = gameService.getGameState(gameId, currentUser);
             return ResponseEntity.ok(state);
         } catch (IllegalArgumentException e) {
+            logger.debug("API: Get game state failed - gameId={}, error={}", gameId, e.getMessage());
             return ResponseEntity.notFound().build();
         }
     }
@@ -67,10 +81,13 @@ public class GameController {
     public ResponseEntity<Void> submitVote(@PathVariable Long gameId,
                                             @RequestBody VoteActionRequest request,
                                             @RequestAttribute("currentUser") User currentUser) {
+        logger.info("API: Submit vote - gameId={}, userId={}, targetId={}",
+            gameId, currentUser.getId(), request.getTargetPlayerId());
         try {
             gameService.submitVote(gameId, currentUser, request);
             return ResponseEntity.ok().build();
         } catch (IllegalArgumentException | IllegalStateException e) {
+            logger.warn("API: Submit vote failed - gameId={}, error={}", gameId, e.getMessage());
             return ResponseEntity.badRequest().build();
         }
     }
@@ -79,10 +96,13 @@ public class GameController {
     public ResponseEntity<Void> submitPowerAction(@PathVariable Long gameId,
                                                    @RequestBody PowerActionRequest request,
                                                    @RequestAttribute("currentUser") User currentUser) {
+        logger.info("API: Submit power action - gameId={}, userId={}, actionType={}",
+            gameId, currentUser.getId(), request.getActionType());
         try {
             gameService.submitPowerAction(gameId, currentUser, request);
             return ResponseEntity.ok().build();
         } catch (IllegalArgumentException | IllegalStateException e) {
+            logger.warn("API: Submit power action failed - gameId={}, error={}", gameId, e.getMessage());
             return ResponseEntity.badRequest().build();
         }
     }
@@ -111,12 +131,12 @@ public class GameController {
     }
 
     @PostMapping("/{gameId}/chat")
-    public ResponseEntity<ChatMessageDto> sendChatMessage(@PathVariable Long gameId,
-                                                           @RequestBody ChatMessageRequest request,
-                                                           @RequestAttribute("currentUser") User currentUser) {
+    public ResponseEntity<Void> sendChatMessage(@PathVariable Long gameId,
+                                                 @RequestBody ChatMessageRequest request,
+                                                 @RequestAttribute("currentUser") User currentUser) {
         try {
-            ChatMessageDto message = gameService.sendChatMessage(gameId, currentUser, request);
-            return ResponseEntity.ok(message);
+            gameService.sendChatMessage(gameId, currentUser, request);
+            return ResponseEntity.noContent().build();
         } catch (IllegalArgumentException | IllegalStateException e) {
             return ResponseEntity.badRequest().build();
         }
